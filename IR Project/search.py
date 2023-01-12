@@ -27,9 +27,9 @@ class Search:
         """
         
         epsilon = .0000001
-        total_vocab_size = len(index.term_total)
+        total_vocab_size = len(query_to_search)
         Q = np.zeros((total_vocab_size))
-        term_vector = list(index.term_total.keys())    
+        term_vector = list(query_to_search)    
         counter = Counter(query_to_search)
         for token in np.unique(query_to_search):
             if token in index.term_total.keys(): #avoid terms that do not appear in the index.               
@@ -42,6 +42,7 @@ class Search:
                     Q[ind] = tf*idf                    
                 except:
                     pass
+        print(Q)
         return Q
 
     def get_posting_iter(self, index):
@@ -82,11 +83,9 @@ class Search:
         for term in np.unique(query_to_search):
             if term in words:            
                 list_of_doc = pls[words.index(term)]            
-                normlized_tfidf = [(doc_id,(freq/index._DL[str(doc_id)])*math.log(len(index._DL)/index.df[term],10)) for doc_id, freq in list_of_doc]
-                
+                normlized_tfidf = [(doc_id,(freq/index._DL[str(doc_id)].get('dl', 1))*math.log(len(index._DL)/index.df[term],10)) for doc_id, freq in list_of_doc]
                 for doc_id, tfidf in normlized_tfidf:
                     candidates[(doc_id,term)] = candidates.get((doc_id,term), 0) + tfidf               
-
         return candidates
 
     def generate_document_tfidf_matrix(self, query_to_search,index,words,pls):
@@ -111,20 +110,19 @@ class Search:
         DataFrame of tfidf scores.
         """
         
-        total_vocab_size = len(index.term_total)
+        total_vocab_size = len(query_to_search)
         candidates_scores = self.get_candidate_documents_and_scores(query_to_search,index,words,pls) #We do not need to utilize all document. Only the docuemnts which have corrspoinding terms with the query.
         unique_candidates = np.unique([doc_id for doc_id, freq in candidates_scores.keys()])
         D = np.zeros((len(unique_candidates), total_vocab_size))
         D = pd.DataFrame(D)
         
         D.index = unique_candidates
-        D.columns = index.term_total.keys()
+        D.columns = query_to_search
 
         for key in candidates_scores:
             tfidf = candidates_scores[key]
             doc_id, term = key    
             D.loc[doc_id][term] = tfidf
-
         return D
 
     def get_top_n(self, sim_dict,N=3):
@@ -174,3 +172,11 @@ class Search:
         else:
             sim_dict = D
         return sim_dict
+
+
+        # build generate_document_tf_idf_matrix for each search function
+        # calculate the candidate in the search function
+        # for search in searchs:
+        #   search.generate_document_tfidf_matrix
+        #   get_top_n
+        # ??? check how it can be done using pySpark

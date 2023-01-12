@@ -1,3 +1,4 @@
+from functools import reduce
 import sys
 from collections import Counter, OrderedDict, defaultdict
 import itertools
@@ -8,8 +9,9 @@ from operator import itemgetter
 from pathlib import Path
 import pickle
 from contextlib import closing
+import psutil
 
-BLOCK_SIZE = 1999998
+BLOCK_SIZE = 3999996
 
 class MultiFileWriter:
     """ Sequential binary writer to multiple files of up to BLOCK_SIZE each. """
@@ -90,7 +92,7 @@ class InvertedIndex:
     # starts. 
     self.posting_locs = defaultdict(list)
 
-    self._DL = {} 
+    self._DL = defaultdict(list) 
     
     # static vairable, will contain for each doc_id its Views and PageRank later on
     docs_views = {}
@@ -108,12 +110,44 @@ class InvertedIndex:
         the tf of tokens, then update the index (in memory, no storage 
         side-effects).
     """
-    self._DL[str(doc_id)] = self._DL.get(str(doc_id),0) + (len(tokens))
+    max_tf = 0
+    self._DL[str(doc_id)] = {}
     w2cnt = Counter(tokens)
     self.term_total.update(w2cnt)
     for w, cnt in w2cnt.items():
+      max_tf = max([max_tf, cnt])
       self.df[w] = self.df.get(w, 0) + 1
       self._posting_list[w].append((doc_id, cnt))
+
+    self._DL[str(doc_id)]['norm_mtf'] = sum((x/max_tf)*(x/max_tf) for x in w2cnt.values())**0.5
+    self._DL[str(doc_id)]['norm_dl'] = sum((x/len(tokens))*(x/len(tokens)) for x in w2cnt.values())**0.5
+    self._DL[str(doc_id)]['dl'] = self._DL.get(str(doc_id),{}).get('dl', 0) + (len(tokens))
+
+
+  def add_doc_dt(self, doc_id, tokens, words):
+    """ Adds a document to the index with a given `doc_id` and tokens. It counts
+        the tf of tokens, then update the index (in memory, no storage 
+        side-effects).
+    """
+    max_tf = 0
+    self._DL[str(doc_id)] = {}
+    w2cnt = Counter(tokens)
+    relevant_doc = False
+    for w in words:
+      if w in w2cnt:
+        relevant_doc = True
+        break
+    if not relevant_doc:
+      return
+  
+    self.term_total.update(w2cnt)
+    for w, cnt in w2cnt.items():
+      max_tf = max([max_tf, cnt])
+      self.df[w] = self.df.get(w, 0) + 1
+      self._posting_list[w].append((doc_id, cnt))
+    self._DL[str(doc_id)]['norm_mtf'] = sum((x/max_tf)*(x/max_tf) for x in w2cnt.values())**0.5
+    self._DL[str(doc_id)]['norm_dl'] = sum((x/len(tokens))*(x/len(tokens)) for x in w2cnt.values())**0.5
+    self._DL[str(doc_id)]['dl'] = self._DL.get(str(doc_id),{}).get('dl', 0) + (len(tokens))
 
   def write_index(self, base_dir, name):
     """ Write the in-memory index to disk. Results in the file: 
@@ -188,41 +222,17 @@ class InvertedIndex:
         output_name: str
             The name of the merged index.
     """
-    indices = [InvertedIndex.read_index(base_dir, name) for name in names]
-    iters = [idx.posting_lists_iter() for idx in indices]
-    #### POSTINGS: merge & write out ####
-    # YOUR CODE HERE
-    with closing(MultiFileWriter(base_dir, output_name)) as writer:
-      count = 1
-      while True:
-        # The values returned by the posting_lists_iters
-        iters_values = [next(iter, None) for iter in iters]
-        
-        # Checking if not all iters are Done (They get None value when the iter is finished)
-        if not any(iters_values):
-          break     
+    for name in names:
+      indice = InvertedIndex.read_index(base_dir, name)
+      self.df += indice.df
+      self.term_total += indice.term_total
+      for w, posting_locs in indice.posting_locs.items():
+        self.posting_locs[w].extend(posting_locs)
 
-        # Iterate over the values and check if not None ( Extra check)
-        for posting in iters_values:
-          if posting is not None:
-            # unpack the posting with the w, post
-            w, post = posting
-            # Restructure the values and adding them as new document 
-            # --- updating self.df, self._posting_list, tf   
-            for doc_id, tf in post:
-              self.add_doc(doc_id , {w : tf} )
-          # To pass the test under i had to keep minimum of 4 posting, because the writing of files
-          # already pre determend, without that condition, the output was 3 files "dog" was written to and different offsets
-          # Writing the _posting_lists to files posting files, and updating the posting_locs with the create file (w, createdFile for posting)
-          # we remove the posting by reassigen the _posting_list to a new dictionary(list)
-          if count % 4 == 0:
-            for w in sorted(self._posting_list.keys()):
-              self._write_a_posting_list(w, writer, sort=True)
-            self._posting_list = defaultdict(list)
+        for doc_id, d in indice._DL.items():
+          self._DL[doc_id] = dict(d)  
 
-      # Writing the _posting_lists left in memory (_posting_list % 4 != 0)
-      for w in sorted(self._posting_list.keys()):
-          self._write_a_posting_list(w, writer, sort=True)
+   
 
     #### GLOBAL DICTIONARIES ####
     self._write_globals(base_dir, output_name)

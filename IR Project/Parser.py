@@ -1,4 +1,4 @@
-BLOCK_SIZE = 1999998 # == 2MB-2bytes, a number that is divisible by TUPLE_SIZE.
+BLOCK_SIZE = 3999998 # == 2MB-2bytes, a number that is divisible by TUPLE_SIZE.
 
 from collections import Counter, defaultdict
 from itertools import groupby, chain

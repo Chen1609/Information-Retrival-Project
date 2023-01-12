@@ -1,4 +1,6 @@
 import numpy as np
+
+
 def Cosine_Similarity(d,q):
     """
     Calculate the cosine similarity for each candidate document in D and a given query (e.g., Q).

@@ -19,7 +19,7 @@ with open(pkl_file, 'rb') as f:
   pages = pickle.load(f)  
 
 
-all_words_body, all_words_title, all_words_anchor, _ = process_wiki(pages, 'all_words')
+all_words_body, all_words_title, all_words_anchor, docs = process_wiki(pages, 'all_words')
 
 body_idx = InvertedIndex.read_index('body_indices', 'all_words')
 title_idx = InvertedIndex.read_index('title_index', 'all_words')
@@ -36,7 +36,7 @@ import re
 import nltk
 from nltk.stem.porter import *
 from nltk.corpus import stopwords
-nltk.download('stopwords')
+# nltk.download('stopwords')
 
 
 RE_WORD = re.compile(r"""[\#\@\w](['\-]?\w){2,24}""", re.UNICODE)
@@ -61,8 +61,12 @@ def tokenize(text):
 from search import Search
 from cosineSimilarity import Cosine_Similarity
 from binarySimilarity import Binary_Similarity
+from LSISimilairty import LSI_Similarity
+
+lsi = LSI_Similarity(anchor_idx, 10)
 
 queries_tokenize = {q_id: tokenize(q) for q_id, q in queries.items()}
 search = Search()
-tfidf_queries_score_train = search.get_topN_score_for_queries(queries_tokenize, title_idx,N=30, score=Binary_Similarity)
-print(tfidf_queries_score_train)
+# tfidf_queries_score_train = search.get_topN_score_for_queries(queries_tokenize, title_idx,N=30, score=Binary_Similarity)
+# tfidf_queries_score = search.get_topN_score_for_queries(queries_tokenize, anchor_idx,N=30, score=LSI_Similarity)
+print(len(lsi.get_page_views_filterd_threashold(docs)))
